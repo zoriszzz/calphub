@@ -1,1 +1,81 @@
-z
+local HttpService = game:GetService("HttpService")
+local rconsoleprint = rconsoleprint or print
+
+local UserKey = _G.UserKey
+local http_request = request or syn.request or http_request or (fluxus and fluxus.request)
+
+if not http_request then
+    game.Players.LocalPlayer:Kick("Authentication Failed: Your executor lacks HTTP support.")
+    return
+end
+
+if not UserKey or UserKey == "" or UserKey == "calp-123456" then
+    game.Players.LocalPlayer:Kick("Authentication Failed: No valid key provided.")
+    return
+end
+
+local FirebaseURL = "https://calp-bb258-default-rtdb.firebaseio.com/keys/" .. tostring(UserKey) .. ".json"
+local UserHWID = game:GetService("RbxAnalyticsService"):GetClientId() 
+
+local function validateKey()
+    local success, response = pcall(function()
+        return http_request({
+            Url = FirebaseURL,
+            Method = "GET"
+        })
+    end)
+
+    if not success or not response or response.StatusCode ~= 200 or response.Body == "null" then
+        rconsoleprint("Invalid Key! Please generate a valid one via the Discord bot.\n")
+        return false
+    end
+
+    local data = HttpService:JSONDecode(response.Body)
+    local currentTime = os.time()
+
+    if currentTime > data.expires_at then
+        rconsoleprint("This key has expired!\n")
+        return false
+    end
+
+    if data.hwid == "NOT_SET" then
+        local patchData = HttpService:JSONEncode({ hwid = UserHWID })
+        
+        local patchSuccess, patchResponse = pcall(function()
+            return http_request({
+                Url = FirebaseURL,
+                Method = "PATCH",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = patchData
+            })
+        end)
+        
+        if patchSuccess and patchResponse.StatusCode == 200 then
+            rconsoleprint("Key successfully locked to your hardware ID!\n")
+        else
+            rconsoleprint("Database Error: Failed to link HWID.\n")
+            return false
+        end
+    elseif data.hwid ~= UserHWID then
+        rconsoleprint("HWID Mismatch! This key belongs to another device.\n")
+        return false
+    end
+
+    return true
+end
+
+if validateKey() then
+    rconsoleprint("Key verified! Fetching main script from Main GitHub...\n")
+    
+    local mainScriptURL = "https://raw.githubusercontent.com/zorluaa/ww/refs/heads/main/ww"
+    
+    local loadSuccess, err = pcall(function()
+        loadstring(game:HttpGet(mainScriptURL))()
+    end)
+    
+    if not loadSuccess then
+        rconsoleprint("Error loading main script features: " .. tostring(err) .. "\n")
+    end
+else
+    game.Players.LocalPlayer:Kick("Key Authentication Failed.")
+end
